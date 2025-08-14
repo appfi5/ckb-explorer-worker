@@ -1,0 +1,5 @@
+spring:
+  application:
+    name: ckb-explore-worker
+  profiles:
+    active: local

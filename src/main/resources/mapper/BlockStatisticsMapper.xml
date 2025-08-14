@@ -1,0 +1,32 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper
+        PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.ckb.explore.worker.mapper.BlockStatisticsMapper">
+
+    <resultMap id="BaseResultMap" type="com.ckb.explore.worker.entity.BlockStatistics">
+            <id property="id" column="id" jdbcType="BIGINT"/>
+            <result property="difficulty" column="difficulty" jdbcType="VARCHAR"/>
+            <result property="hash_rate" column="hash_rate" jdbcType="VARCHAR"/>
+            <result property="live_cells_count" column="live_cells_count" jdbcType="VARCHAR"/>
+            <result property="dead_cells_count" column="dead_cells_count" jdbcType="VARCHAR"/>
+            <result property="block_number" column="block_number" jdbcType="BIGINT"/>
+            <result property="created_at" column="created_at" jdbcType="TIMESTAMP"/>
+            <result property="updated_at" column="updated_at" jdbcType="TIMESTAMP"/>
+            <result property="epoch_number" column="epoch_number" jdbcType="BIGINT"/>
+            <result property="primary_issuance" column="primary_issuance" jdbcType="NUMERIC"/>
+            <result property="secondary_issuance" column="secondary_issuance" jdbcType="NUMERIC"/>
+            <result property="accumulated_total_deposits" column="accumulated_total_deposits" jdbcType="NUMERIC"/>
+            <result property="accumulated_rate" column="accumulated_rate" jdbcType="NUMERIC"/>
+            <result property="unissued_secondary_issuance" column="unissued_secondary_issuance" jdbcType="NUMERIC"/>
+            <result property="total_occupied_capacities" column="total_occupied_capacities" jdbcType="NUMERIC"/>
+    </resultMap>
+
+    <sql id="Base_Column_List">
+        id,difficulty,hash_rate,
+        live_cells_count,dead_cells_count,block_number,
+        created_at,updated_at,epoch_number,
+        primary_issuance,secondary_issuance,accumulated_total_deposits,
+        accumulated_rate,unissued_secondary_issuance,total_occupied_capacities
+    </sql>
+</mapper>
