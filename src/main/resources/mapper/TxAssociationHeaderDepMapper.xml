@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper
+        PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.ckb.explore.worker.mapper.TxAssociationHeaderDepMapper">
+
+    <resultMap id="BaseResultMap" type="com.ckb.explore.worker.entity.TxAssociationHeaderDep">
+            <result property="id" column="id" jdbcType="BIGINT"/>
+            <result property="txId" column="tx_id" jdbcType="BIGINT"/>
+            <result property="blockId" column="block_id" jdbcType="BIGINT"/>
+    </resultMap>
+
+    <sql id="Base_Column_List">
+        id,tx_id,block_id
+    </sql>
+</mapper>

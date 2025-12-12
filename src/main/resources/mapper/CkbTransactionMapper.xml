@@ -1,0 +1,117 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper
+        PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.ckb.explore.worker.mapper.CkbTransactionMapper">
+
+    <resultMap id="BaseResultMap" type="com.ckb.explore.worker.entity.CkbTransaction">
+            <id property="id" column="id" jdbcType="BIGINT"/>
+            <result property="txHash" column="tx_hash" jdbcType="OTHER"/>
+            <result property="version" column="version" jdbcType="OTHER"/>
+            <result property="inputCount" column="input_count" jdbcType="INTEGER"/>
+            <result property="outputCount" column="output_count" jdbcType="INTEGER"/>
+            <result property="witnesses" column="witnesses" jdbcType="OTHER"/>
+            <result property="blockId" column="block_id" jdbcType="BIGINT"/>
+            <result property="blockNumber" column="block_number" jdbcType="BIGINT"/>
+            <result property="blockHash" column="block_hash" jdbcType="OTHER"/>
+            <result property="txIndex" column="tx_index" jdbcType="INTEGER"/>
+            <result property="headerDeps" column="header_deps" jdbcType="OTHER"/>
+            <result property="cycles" column="cycles" jdbcType="INTEGER"/>
+            <result property="transactionFee" column="transaction_fee" jdbcType="BIGINT"/>
+            <result property="bytes" column="bytes" jdbcType="BIGINT"/>
+    </resultMap>
+
+    <sql id="Base_Column_List">
+        id,tx_hash,version,
+        input_count,output_count,witnesses,
+        block_id,block_number,block_hash,
+        tx_index,header_deps,cycles,
+        transaction_fee,bytes
+    </sql>
+
+    <resultMap id="TransactionWithOutputResultMap" type="com.ckb.explore.worker.entity.CkbTransaction">
+
+        <id property="id" column="id" />
+        <result column="block_number" property="blockNumber"/>
+        <result column="tx_index" property="txIndex"/>
+        <collection property="outputs" ofType="com.ckb.explore.worker.entity.Output">
+            <id column="output_id" property="id"/>
+            <result column="output_index" property="outputIndex"/>
+            <result column="capacity" property="capacity"/>
+            <result column="data" property="data"/>
+
+            <association property="typeScript" javaType="com.ckb.explore.worker.entity.Script">
+                <id column="type_script_id" property="id"/>
+                <result column="type_script_hash" property="scriptHash"/>
+                <result column="type_code_hash" property="codeHash"/>
+                <result column="type_hash_type" property="hashType"/>
+                <result column="type_args" property="args"/>
+            </association>
+        </collection>
+    </resultMap>
+
+    <select id="selectByBlockNumberWithJoin" resultMap="TransactionWithOutputResultMap">
+        SELECT
+            t.id,
+            t.block_number,
+            t.tx_index,
+            o.id AS output_id,
+            o.output_index,
+            o.capacity,
+            o.data,
+            ts.id AS type_script_id,
+            ts.script_hash AS type_script_hash,
+            ts.code_hash AS type_code_hash,
+            ts.hash_type AS type_hash_type,
+            ts.args AS type_args
+        FROM ckb_transaction t
+                 LEFT JOIN output o ON t.id = o.tx_id
+                 LEFT JOIN script ts ON o.type_script_id = ts.id
+        WHERE t.block_number = #{blockNumber}
+    </select>
+
+    <select id="selectRecentTransactionFeeRates" resultType="com.ckb.explore.worker.entity.TransactionFeeRates">
+      SELECT id                                                     as id,
+             ROUND((transaction_fee::NUMERIC / bytes::NUMERIC), 16) as fee_rate,
+             block_timestamp                                        as timestamp,
+             30                                                     as confirmation_time -- 暂时固定30秒
+      FROM ckb_transaction
+      WHERE bytes > 0
+        AND transaction_fee > 0
+      ORDER BY id DESC
+        LIMIT 10000
+    </select>
+
+  <select id="selectLastNDaysTransactionFeeRates" resultType="com.ckb.explore.worker.entity.LastNDaysTransactionFeeRates">
+    SELECT
+      -- 最终仅返回：格式化后的日期（UTC 标准 YYYY-MM-DD）、平均费率
+      TO_CHAR(
+        TO_TIMESTAMP((tx_filtered.day_key) * 86400) AT TIME ZONE 'UTC',
+        'YYYY-MM-DD'
+      )                                      AS date,
+    (SUM(tx_filtered.fee_per_byte) / COUNT(*)) AS fee_rate
+    FROM (
+      -- 子查询1：先筛选出需要的交易范围（核心：提前过滤，减少后续分组数据量）
+      SELECT
+      -- 计算“按天分组的键”（整数，如 17180 代表 2024-06-10），仅用于后续分组
+      (block_timestamp / 86400000)::BIGINT        AS day_key,
+      -- 提前计算“单条交易的费率”（避免分组时重复计算，提升性能）
+      (transaction_fee::NUMERIC / bytes::NUMERIC) AS fee_per_byte
+      FROM ckb_transaction
+      WHERE
+      -- 1. 基础过滤：排除无效交易（bytes/交易费为0无意义）
+      bytes > 0
+      AND transaction_fee > 0
+      -- 2. 时间范围过滤：仅保留“最大时间戳 - N天”内的交易（动态计算范围）
+      AND block_timestamp >= (
+      -- 子查询2：高效获取表内最新交易的时间戳（仅1条结果，无性能损耗）
+        SELECT COALESCE(MAX(block_timestamp), 0)
+        FROM ckb_transaction
+        ) - (#{nDays} * 86400000)::BIGINT -- ? = 入参N（需查询的最近N天）
+      ) AS tx_filtered
+-- 子查询结果已过滤，仅对有效数据按“天”分组
+    GROUP BY tx_filtered.day_key
+-- 按日期升序排列
+    ORDER BY tx_filtered.day_key asc;
+  </select>
+</mapper>

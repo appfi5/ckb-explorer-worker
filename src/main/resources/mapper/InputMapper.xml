@@ -1,0 +1,23 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper
+        PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.ckb.explore.worker.mapper.InputMapper">
+
+    <resultMap id="BaseResultMap" type="com.ckb.explore.worker.entity.Input">
+            <id property="id" column="id" jdbcType="BIGINT"/>
+            <result property="outputId" column="output_id" jdbcType="BIGINT"/>
+            <result property="preOutpointTxHash" column="pre_outpoint_tx_hash" jdbcType="OTHER"/>
+            <result property="preOutpointIndex" column="pre_outpoint_index" jdbcType="INTEGER"/>
+            <result property="since" column="since" jdbcType="OTHER"/>
+            <result property="consumedTxId" column="consumed_tx_id" jdbcType="BIGINT"/>
+            <result property="consumedTxHash" column="consumed_tx_hash" jdbcType="OTHER"/>
+            <result property="inputIndex" column="input_index" jdbcType="INTEGER"/>
+    </resultMap>
+
+    <sql id="Base_Column_List">
+        id,output_id,pre_outpoint_tx_hash,
+        pre_outpoint_index,since,consumed_tx_id,
+        consumed_tx_hash,input_index
+    </sql>
+</mapper>

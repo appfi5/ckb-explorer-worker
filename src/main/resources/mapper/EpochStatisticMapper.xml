@@ -1,0 +1,43 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper
+        PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.ckb.explore.worker.mapper.EpochStatisticMapper">
+
+  <select id="getEpochTimeDistribution" resultType="com.ckb.explore.worker.domain.dto.EpochTimeDistributionDto">
+    WITH
+    -- 1. 生成所有时间范围（初始范围 + 动态1分钟区间）
+    time_ranges AS (
+    -- 初始范围：0-180分钟
+    SELECT 0                         AS index,      -- 索引0标识初始范围
+    0                         AS start_minute,
+    180                       AS end_minute,
+    (0 * 60 * 1000)::BIGINT   AS start_ms,   -- 开始时间（毫秒）
+    (180 * 60 * 1000)::BIGINT AS end_ms,     -- 结束时间（毫秒）
+    180                       AS range_upper -- 结果标识：范围结束分钟数
+    UNION ALL
+    -- 动态生成120个1分钟区间：180-181分钟 到 299-300分钟
+    SELECT g.rn                               AS index,        -- 索引1~120标识动态区间
+    (179 + g.rn)                       AS start_minute, -- 开始分钟（180,181,...299）
+    (180 + g.rn)                       AS end_minute,   -- 结束分钟（181,182,...300）
+    ((179 + g.rn) * 60 * 1000)::BIGINT AS start_ms,     -- 开始时间（毫秒）
+    ((180 + g.rn) * 60 * 1000)::BIGINT AS end_ms,       -- 结束时间（毫秒）
+    (180 + g.rn)                       AS range_upper   -- 结果标识：范围结束分钟数
+    FROM generate_series(1, 120) AS g(rn) -- 生成1~120的连续整数
+    )
+    SELECT tr.range_upper,
+    COUNT(es.id) AS epoch_count -- 该范围的epoch总数
+    FROM time_ranges tr
+    -- 左连接：确保即使范围无数据也显示（epoch_count=0）
+    LEFT JOIN epoch_statistics es
+    ON (
+    -- 初始范围（index=0）：epoch_time ≤ 180分钟（毫秒）
+    (tr.index = 0 AND es.epoch_time &lt;= tr.end_ms)
+    -- 动态范围（index≥1）：epoch_time 在 (start_ms, end_ms] 区间（避免重复统计）
+    OR (tr.index &gt; 0 AND es.epoch_time &gt; tr.start_ms AND es.epoch_time &lt;= tr.end_ms)
+    )
+    GROUP BY tr.index, tr.range_upper
+    ORDER BY range_upper
+</select>
+
+</mapper>

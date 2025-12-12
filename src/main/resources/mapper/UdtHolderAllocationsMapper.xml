@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper
+        PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.ckb.explore.worker.mapper.UdtHolderAllocationsMapper">
+
+    <resultMap id="BaseResultMap" type="com.ckb.explore.worker.entity.UdtHolderAllocations">
+             <result property="typeScriptId" column="type_script_id" jdbcType="BIGINT"/>
+            <result property="lockType" column="lock_type" jdbcType="INTEGER"/>
+            <result property="holderCount" column="holder_count" jdbcType="INTEGER"/>
+    </resultMap>
+
+    <sql id="Base_Column_List">
+        type_script_id,lock_type,holder_count
+    </sql>
+</mapper>

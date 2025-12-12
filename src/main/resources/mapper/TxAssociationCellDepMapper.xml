@@ -1,0 +1,22 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper
+        PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.ckb.explore.worker.mapper.TxAssociationCellDepMapper">
+
+    <resultMap id="BaseResultMap" type="com.ckb.explore.worker.entity.TxAssociationCellDep">
+            <result property="id" column="id" jdbcType="BIGINT"/>
+            <result property="txId" column="tx_id" jdbcType="BIGINT"/>
+            <result property="index" column="index" jdbcType="INTEGER"/>
+            <result property="outpointTxHash" column="outpoint_tx_hash" jdbcType="OTHER"/>
+            <result property="outpointIndex" column="outpoint_index" jdbcType="INTEGER"/>
+            <result property="outputId" column="output_id" jdbcType="BIGINT"/>
+            <result property="depType" column="dep_type" jdbcType="SMALLINT"/>
+    </resultMap>
+
+    <sql id="Base_Column_List">
+        id,tx_id,index,
+        outpoint_tx_hash,outpoint_index,output_id,
+        dep_type
+    </sql>
+</mapper>

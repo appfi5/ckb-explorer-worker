@@ -9,10 +9,10 @@
         <relativePath/> <!-- lookup parent from repository -->
     </parent>
     <groupId>com.explore</groupId>
-    <artifactId>ckb-explore-worker</artifactId>
+    <artifactId>ckb-explorer-worker</artifactId>
     <version>0.0.1-SNAPSHOT</version>
-    <name>ckb-explore-worker</name>
-    <description>ckb-explore-worker</description>
+    <name>ckb-explorer-worker</name>
+    <description>ckb-explorer-worker</description>
     <url/>
     <licenses>
         <license/>
@@ -30,19 +30,42 @@
         <java.version>21</java.version>
         <mybatisPlus.version>3.5.12</mybatisPlus.version>
         <lombok.version>1.18.32</lombok.version>
-        <redisson.version>3.23.5</redisson.version>
+        <redisson.version>3.50.0</redisson.version>
+        <javaVersion>21</javaVersion>
+        <spring-cloud.version>2025.0.0</spring-cloud.version>
     </properties>
+    <dependencyManagement>
+        <dependencies>
+            <dependency>
+                <groupId>org.springframework.cloud</groupId>
+                <artifactId>spring-cloud-dependencies</artifactId>
+                <version>${spring-cloud.version}</version>
+                <type>pom</type>
+                <scope>import</scope>
+            </dependency>
+        </dependencies>
+    </dependencyManagement>
     <dependencies>
+        <dependency>
+          <groupId>org.springframework.boot</groupId>
+          <artifactId>spring-boot-starter-web</artifactId>
+        </dependency>
         <dependency>
             <groupId>com.baomidou</groupId>
             <artifactId>mybatis-plus-spring-boot3-starter</artifactId>
             <version>${mybatisPlus.version}</version>
         </dependency>
+        <!-- MyBatis-Plus JsqlParser dependency for pagination -->
+        <dependency>
+          <groupId>com.baomidou</groupId>
+          <artifactId>mybatis-plus-jsqlparser</artifactId>
+          <version>${mybatisPlus.version}</version>
+        </dependency>
         <dependency>
             <groupId>org.postgresql</groupId>
             <artifactId>postgresql</artifactId>
             <version>42.6.0</version>
-            <scope>runtime</scope>
+            <scope>compile</scope>
         </dependency>
         <dependency>
             <groupId>org.projectlombok</groupId>
@@ -55,40 +78,79 @@
             <version>${redisson.version}</version>
         </dependency>
         <dependency>
+            <groupId>org.nervos.ckb</groupId>
+            <artifactId>ckb</artifactId>
+            <version>4.0.0</version>
+        </dependency>
+         <dependency>
+            <groupId>org.nervos.ckb</groupId>
+            <artifactId>core</artifactId>
+            <version>4.0.0</version>
+        </dependency>
+         <dependency>
+            <groupId>org.nervos.ckb</groupId>
+            <artifactId>utils</artifactId>
+            <version>4.0.0</version>
+        </dependency>
+         <dependency>
+            <groupId>org.nervos.ckb</groupId>
+            <artifactId>serialization</artifactId>
+            <version>4.0.0</version>
+        </dependency>
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-json</artifactId>
+        </dependency>
+<!--        <dependency>-->
+<!--            <groupId>org.springframework.cloud</groupId>-->
+<!--            <artifactId>spring-cloud-starter-stream-kafka</artifactId>-->
+<!--        </dependency>-->
+<!--        <dependency>-->
+<!--            <groupId>org.springframework.cloud</groupId>-->
+<!--            <artifactId>spring-cloud-stream-test-binder</artifactId>-->
+<!--        </dependency>-->
+        <dependency>
             <groupId>org.springframework.boot</groupId>
             <artifactId>spring-boot-starter-test</artifactId>
             <scope>test</scope>
         </dependency>
+        <!-- 动态数据源 -->
+        <dependency>
+            <groupId>com.baomidou</groupId>
+            <artifactId>dynamic-datasource-spring-boot3-starter</artifactId>
+            <version>4.3.0</version>
+        </dependency>
     </dependencies>
 
     <build>
-        <finalName>ckb-explore-worker</finalName>
+        <finalName>ckb-explorer-worker</finalName>
         <plugins>
             <plugin>
                 <groupId>org.springframework.boot</groupId>
                 <artifactId>spring-boot-maven-plugin</artifactId>
-                <configuration>
-                    <skip>true</skip>
-                </configuration>
-                <executions>
-                    <execution>
-                        <goals>
-                            <goal>repackage</goal>
-                        </goals>
-                    </execution>
-                </executions>
             </plugin>
             <plugin>
                 <groupId>org.apache.maven.plugins</groupId>
                 <artifactId>maven-compiler-plugin</artifactId>
-                <version>3.8.0</version>
+                <version>3.14.0</version>
                 <configuration>
-                    <source>${java.version}</source>
-                    <target>${java.version}</target>
+                    <source>21</source>
+                    <target>21</target>
+                    <release>21</release>
+                    <annotationProcessorPaths>
+                        <path>
+                            <groupId>org.projectlombok</groupId>
+                            <artifactId>lombok</artifactId>
+                            <version>1.18.32</version>
+                        </path>
+                        <path>
+                            <groupId>org.mapstruct</groupId>
+                            <artifactId>mapstruct-processor</artifactId>
+                            <version>1.5.5.Final</version>
+                        </path>
+                    </annotationProcessorPaths>
                 </configuration>
             </plugin>
-
         </plugins>
     </build>
-
 </project>

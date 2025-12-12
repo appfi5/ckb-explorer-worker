@@ -1,0 +1,199 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper
+        PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.ckb.explore.worker.mapper.OutputMapper">
+
+    <resultMap id="BaseResultMap" type="com.ckb.explore.worker.entity.Output">
+            <id property="id" column="id" jdbcType="BIGINT"/>
+            <result property="txId" column="tx_id" jdbcType="BIGINT"/>
+            <result property="txHash" column="tx_hash" jdbcType="OTHER"/>
+            <result property="outputIndex" column="output_index" jdbcType="INTEGER"/>
+            <result property="capacity" column="capacity" jdbcType="BIGINT"/>
+            <result property="lockScriptId" column="lock_script_id" jdbcType="BIGINT"/>
+            <result property="typeScriptId" column="type_script_id" jdbcType="BIGINT"/>
+            <result property="data" column="data" jdbcType="OTHER"/>
+            <result property="occupiedCapacity" column="occupied_capacity" jdbcType="BIGINT"/>
+            <result property="isSpent" column="is_spent" jdbcType="INTEGER"/>
+            <result property="consumedTxHash" column="consumed_tx_hash" jdbcType="OTHER"/>
+            <result property="inputIndex" column="input_index" jdbcType="INTEGER"/>
+    </resultMap>
+
+    <sql id="Base_Column_List">
+        id,tx_id,tx_hash,
+        output_index,capacity,lock_script_id,
+        type_script_id,data,occupied_capacity,
+        is_spent,consumed_tx_hash,input_index
+    </sql>
+
+    <resultMap id="outputWithMapResultMap" type="com.ckb.explore.worker.entity.Output">
+        <id column="id" property="id"/>
+        <result column="output_index" property="outputIndex"/>
+        <result column="capacity" property="capacity"/>
+        <result column="data" property="data"/>
+        <result column="tx_id" property="txId"/>
+        <association property="typeScript" javaType="com.ckb.explore.worker.entity.Script">
+            <id column="type_script_id" property="id"/>
+            <result column="type_script_hash" property="scriptHash"/>
+            <result column="type_code_hash" property="codeHash"/>
+            <result column="type_hash_type" property="hashType"/>
+            <result column="type_args" property="args"/>
+        </association>
+        <association property="lockScript" javaType="com.ckb.explore.worker.entity.Script">
+            <id column="type_script_id" property="id"/>
+            <result column="lock_script_hash" property="scriptHash"/>
+            <result column="lock_code_hash" property="codeHash"/>
+            <result column="lock_hash_type" property="hashType"/>
+            <result column="lock_args" property="args"/>
+        </association>
+    </resultMap>
+
+    <select id="selectByTxIdWithJoin" resultMap="outputWithMapResultMap">
+        SELECT
+            o.id,
+            o.output_index,
+            o.capacity,
+            o.data,
+            o.tx_id,
+            ts.id AS type_script_id,
+            ts.script_hash AS type_script_hash,
+            ts.code_hash AS type_code_hash,
+            ts.hash_type AS type_hash_type,
+            ts.args AS type_args,
+            ls.id AS lock_script_id,
+            ls.script_hash AS lock_script_hash,
+            ls.code_hash AS lock_code_hash,
+            ls.hash_type AS lock_hash_type,
+            ls.args AS lock_args
+        FROM output o
+                 LEFT JOIN script ts ON o.type_script_id = ts.id
+                 LEFT JOIN script ls ON o.lock_script_id = ls.id
+        WHERE o.tx_id = #{txId}
+    </select>
+
+  <select id="getCkbHodlWave" resultType="com.ckb.explore.worker.domain.dto.CkbHodlWaveDto">
+    SELECT
+      SUM(over_three_years) AS over_three_years,
+      SUM(one_year_to_three_years) AS one_year_to_three_years,
+      SUM(six_months_to_one_year) AS six_months_to_one_year,
+      SUM(three_months_to_six_months) AS three_months_to_six_months,
+      SUM(one_month_to_three_months) AS one_month_to_three_months,
+      SUM(one_week_to_one_month) AS one_week_to_one_month,
+      SUM(day_to_one_week) AS day_to_one_week,
+      SUM(latest_day) AS latest_day
+    FROM (
+      SELECT
+      SUM(CASE WHEN co.block_timestamp &lt; #{threeYearsAgo} THEN co.capacity ELSE 0 END) AS over_three_years,
+      SUM(CASE WHEN co.block_timestamp &gt;= #{threeYearsAgo} AND co.block_timestamp &lt; #{oneYearAgo} THEN co.capacity ELSE 0 END) AS one_year_to_three_years,
+      SUM(CASE WHEN co.block_timestamp &gt;= #{oneYearAgo} AND co.block_timestamp &lt; #{sixMonthsAgo} THEN co.capacity ELSE 0 END) AS six_months_to_one_year,
+      SUM(CASE WHEN co.block_timestamp &gt;= #{sixMonthsAgo} AND co.block_timestamp &lt; #{threeMonthsAgo} THEN co.capacity ELSE 0 END) AS three_months_to_six_months,
+      SUM(CASE WHEN co.block_timestamp &gt;= #{threeMonthsAgo} AND co.block_timestamp &lt; #{oneMonthAgo} THEN co.capacity ELSE 0 END) AS one_month_to_three_months,
+      SUM(CASE WHEN co.block_timestamp &gt;= #{oneMonthAgo} AND co.block_timestamp &lt; #{oneWeekAgo} THEN co.capacity ELSE 0 END) AS one_week_to_one_month,
+      SUM(CASE WHEN co.block_timestamp &gt;= #{oneWeekAgo} AND co.block_timestamp &lt; #{startAt} THEN co.capacity ELSE 0 END) AS day_to_one_week,
+      SUM(CASE WHEN co.block_timestamp &gt;= #{startAt} AND co.block_timestamp &lt; #{endAt} THEN co.capacity ELSE 0 END) AS latest_day
+      FROM output co
+      WHERE co.consumed_timestamp IS NULL
+      AND co.block_timestamp &lt; #{endAt}
+
+      UNION ALL
+
+      SELECT
+      SUM(CASE WHEN co.block_timestamp &lt; #{threeYearsAgo} THEN co.capacity ELSE 0 END) AS over_three_years,
+      SUM(CASE WHEN co.block_timestamp &gt;= #{threeYearsAgo} AND co.block_timestamp &lt; #{oneYearAgo} THEN co.capacity ELSE 0 END) AS one_year_to_three_years,
+      SUM(CASE WHEN co.block_timestamp &gt;= #{oneYearAgo} AND co.block_timestamp &lt; #{sixMonthsAgo} THEN co.capacity ELSE 0 END) AS six_months_to_one_year,
+      SUM(CASE WHEN co.block_timestamp &gt;= #{sixMonthsAgo} AND co.block_timestamp &lt; #{threeMonthsAgo} THEN co.capacity ELSE 0 END) AS three_months_to_six_months,
+      SUM(CASE WHEN co.block_timestamp &gt;= #{threeMonthsAgo} AND co.block_timestamp &lt; #{oneMonthAgo} THEN co.capacity ELSE 0 END) AS one_month_to_three_months,
+      SUM(CASE WHEN co.block_timestamp &gt;= #{oneMonthAgo} AND co.block_timestamp &lt; #{oneWeekAgo} THEN co.capacity ELSE 0 END) AS one_week_to_one_month,
+      SUM(CASE WHEN co.block_timestamp &gt;= #{oneWeekAgo} AND co.block_timestamp &lt; #{startAt} THEN co.capacity ELSE 0 END) AS day_to_one_week,
+      SUM(CASE WHEN co.block_timestamp &gt;= #{startAt} AND co.block_timestamp &lt; #{endAt} THEN co.capacity ELSE 0 END) AS latest_day
+      FROM output co
+      WHERE co.consumed_timestamp &gt;= #{endAt}
+        AND co.block_timestamp &lt; #{endAt}
+
+    ) AS subquery
+  </select>
+
+  <select id="getHolderCount" resultType="java.lang.Long">
+    SELECT
+        COUNT(DISTINCT co.lock_script_id)
+    FROM output co
+    WHERE co.block_timestamp &lt; #{endAt}
+    AND (
+    co.consumed_timestamp IS NULL OR
+    co.consumed_timestamp &gt;= #{endAt}
+    )
+  </select>
+
+  <select id="getActivityAddressContractDistribution" resultType="com.ckb.explore.worker.domain.dto.ActivityAddressContractDistributionDto">
+    SELECT
+      '0x' || encode(s.code_hash, 'hex') AS code_hash,
+      Count(s.id) AS script_hash_count
+    FROM (
+           -- 子查询：先对 output 表去重，保留唯一的 (lock_script_id)（同一区块内）
+           SELECT DISTINCT lock_script_id
+           FROM output
+           WHERE block_number BETWEEN #{minBlockNumber} AND #{maxBlockNumber}
+         ) AS o_distinct  -- 去重后的 output 数据（数据量大幅减少）
+           INNER JOIN script s
+                      ON o_distinct.lock_script_id = s.id
+    WHERE s.is_typescript = 0
+    GROUP BY s.code_hash;
+  </select>
+
+  <select id="getCommonStatistics" resultType="com.ckb.explore.worker.domain.dto.UdtCommonStatisticsDto">
+    SELECT type_script_id                 AS script_id,
+           COUNT(DISTINCT tx_id)          AS ckb_transactions_count,
+           COUNT(DISTINCT lock_script_id) AS holders_count
+    FROM (
+           -- 子查询：先过滤，减少外层 COUNT DISTINCT 的数据量
+           SELECT type_script_id,
+                  tx_id,
+                  CASE
+                    WHEN (consumed_timestamp IS NULL OR consumed_timestamp &gt;= #{endedAt})
+                      THEN lock_script_id
+                    ELSE NULL
+                    END AS lock_script_id
+           FROM output
+           WHERE
+             type_script_id = ANY (#{udtIds, typeHandler=com.ckb.explore.worker.config.mybatis.PgLongArrayTypeHandler}::bigint[])
+             AND block_timestamp &lt; #{endedAt}
+         ) AS sub
+    GROUP BY type_script_id;
+  </select>
+
+  <select id="getLockScriptIdWithConsumedOccupiedCapacityByDate" resultType="com.ckb.explore.worker.domain.dto.LockScriptIdWithOccupiedCapacityDto">
+    SELECT
+      lock_script_id,
+      SUM(occupied_capacity) AS occupied_capacity
+    FROM output
+    WHERE consumed_timestamp &gt;= #{startAt}
+      AND consumed_timestamp &lt; #{endAt}
+      AND block_timestamp &lt; #{startAt}
+    GROUP BY lock_script_id
+  </select>
+  <select id="getLockScriptIdWithAddedOccupiedCapacityByDate" resultType="com.ckb.explore.worker.domain.dto.LockScriptIdWithOccupiedCapacityDto">
+    SELECT lock_script_id,
+           SUM(occupied_capacity) AS occupied_capacity
+    FROM (
+      -- 子查询1：consumed_timestamp >= endAt
+      SELECT lock_script_id,
+             occupied_capacity
+      FROM output
+      WHERE block_timestamp &gt;= #{startAt}
+        AND block_timestamp &lt; #{endAt}
+        AND consumed_timestamp &gt;= #{endAt}
+
+      UNION ALL
+      -- 合并结果（无重复，无需去重）
+
+      -- 子查询2：consumed_timestamp IS NULL
+      SELECT lock_script_id,
+             occupied_capacity
+      FROM output
+      WHERE block_timestamp &gt;= #{startAt}
+        AND block_timestamp  &lt; #{endAt}
+        AND consumed_timestamp IS NULL
+      ) AS sub
+    GROUP BY lock_script_id;
+  </select>
+</mapper>

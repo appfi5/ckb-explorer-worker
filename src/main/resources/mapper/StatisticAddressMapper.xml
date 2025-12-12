@@ -1,0 +1,76 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper
+        PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.ckb.explore.worker.mapper.StatisticAddressMapper">
+
+    <resultMap id="BaseResultMap" type="com.ckb.explore.worker.entity.StatisticAddress">
+            <result property="lockScriptId" column="lock_script_id" jdbcType="BIGINT"/>
+            <result property="balance" column="balance" jdbcType="BIGINT"/>
+            <result property="liveCellsCount" column="live_cells_count" jdbcType="BIGINT"/>
+            <result property="balanceOccupied" column="balance_occupied" jdbcType="BIGINT"/>
+    </resultMap>
+
+    <sql id="Base_Column_List">
+        lock_script_id,balance,live_cells_count,balance_occupied
+    </sql>
+
+  <!-- 根据Ruby代码转换的SQL查询，获取余额排名前50的地址 -->
+  <select id="getAddressBalanceRanking" resultType="com.ckb.explore.worker.domain.dto.AddressBalanceRankingDto">
+    SELECT lock_script_id,
+           balance
+    FROM statistic_address
+    WHERE balance > 0
+    <if test="lockScriptIds != null and lockScriptIds.size() > 0">
+      AND lock_script_id not in
+      <foreach item="item" index="index" collection=" lockScriptIds" open="(" separator="," close=" )">
+        #{item}
+      </foreach>
+    </if>
+    -- 先排序再取前50，RisingWave会优化为“排序+TopN”高效执行计划
+    ORDER BY balance DESC
+    LIMIT 50;
+  </select>
+
+  <select id="getAddressBalanceDistribution" resultType="com.ckb.explore.worker.domain.dto.AddressBalanceDistributionDto">
+    WITH balance_ranges AS (SELECT *
+                            FROM (VALUES (1, 0::BIGINT, 100::BIGINT),
+                                         (2, 100::BIGINT, 1000::BIGINT),
+                                         (3, 1000::BIGINT, 10000::BIGINT),
+                                         (4, 10000::BIGINT, 100000::BIGINT),
+                                         (5, 100000::BIGINT, 1000000::BIGINT),
+                                         (6, 1000000::BIGINT, 10000000::BIGINT),
+                                         (7, 10000000::BIGINT, 100000000::BIGINT),
+                                         (8, 100000000::BIGINT, 1000000000::BIGINT),
+                                         (9, 1000000000::BIGINT,
+                                          NULL::BIGINT)) AS t (level, min_token, max_token)),
+         address_with_bucket AS (SELECT a.lock_script_id,
+                                        br.level
+                                 FROM statistic_address a
+                                        JOIN balance_ranges br ON (
+                                   a.balance/ 100000000.0 > br.min_token
+                                     AND (
+                                     br.max_token IS NULL OR
+                                     a.balance/ 100000000.0 &lt;= br.max_token
+                                     )
+                                   )
+                                 WHERE a.balance/ 100000000.0 > 0
+                                 <if test="lockScriptIds != null and lockScriptIds.size() > 0">
+                                   AND a.lock_script_id not in
+                                   <foreach item="item" index="index" collection=" lockScriptIds" open="(" separator="," close=" )">
+                                     #{item}
+                                   </foreach>
+                                 </if>
+                                 )
+    SELECT case
+             WHEN br.level = 9 then 10000000000
+             else br.max_token end
+                                     AS   range_upper,
+           COUNT(awb.lock_script_id) AS   address_count,
+           SUM(COUNT(awb.lock_script_id)) OVER (PARTITION BY 1::int ORDER BY br.level) AS cumulative_count
+    FROM balance_ranges br
+           LEFT JOIN address_with_bucket awb ON awb.level = br.level
+    GROUP BY br.level, br.max_token
+    ORDER BY br.level;
+  </select>
+</mapper>

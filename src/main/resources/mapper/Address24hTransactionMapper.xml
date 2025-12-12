@@ -1,0 +1,36 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper
+        PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.ckb.explore.worker.mapper.Address24hTransactionMapper">
+
+    <resultMap id="BaseResultMap" type="com.ckb.explore.worker.entity.Address24hTransaction">
+            <result property="lockScriptId" column="lock_script_id" jdbcType="BIGINT"/>
+            <result property="ckbTransactionId" column="ckb_transaction_id" jdbcType="BIGINT"/>
+            <result property="blockTimestamp" column="block_timestamp" jdbcType="BIGINT"/>
+            <result property="blockNumber" column="block_number" jdbcType="BIGINT"/>
+            <result property="typeScriptId" column="type_script_id" jdbcType="BIGINT"/>
+    </resultMap>
+
+    <sql id="Base_Column_List">
+        lock_script_id,ckb_transaction_id,block_timestamp, block_number, type_script_id
+    </sql>
+
+    <delete id="delete24HAgoByLockScriptId">
+        delete  from address_24h_transaction where  lock_script_id = #{lockScriptId}
+        and  block_timestamp   &lt; #{oneDayAgoTimestamp}
+        <if test='null != typeScriptId' >
+             and type_script_id = #{typeScriptId}
+        </if>
+        <if test='null == typeScriptId' >
+            and type_script_id is null
+        </if>
+    </delete>
+
+    <select id="getMaxTimeByLockScriptId"  resultType="java.lang.Long">
+        select  max(block_timestamp) from address_24h_transaction where  lock_script_id = #{lockScriptId}
+        <if test='null != typeScriptId'>
+        and type_script_id = #{typeScriptId}
+        </if>
+    </select>
+</mapper>

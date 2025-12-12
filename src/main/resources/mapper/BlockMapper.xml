@@ -1,0 +1,214 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper
+        PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.ckb.explore.worker.mapper.BlockMapper">
+
+    <resultMap id="BaseResultMap" type="com.ckb.explore.worker.entity.Block">
+            <id property="id" column="id" jdbcType="BIGINT"/>
+            <result property="blockHash" column="block_hash" jdbcType="OTHER"/>
+            <result property="blockNumber" column="block_number" jdbcType="BIGINT"/>
+            <result property="compactTarget" column="compact_target" jdbcType="OTHER"/>
+            <result property="parentHash" column="parent_hash" jdbcType="OTHER"/>
+            <result property="nonce" column="nonce" jdbcType="OTHER"/>
+            <result property="difficulty" column="difficulty" jdbcType="OTHER"/>
+            <result property="timestamp" column="timestamp" jdbcType="BIGINT"/>
+            <result property="version" column="version" jdbcType="OTHER"/>
+            <result property="transactionsRoot" column="transactions_root" jdbcType="OTHER"/>
+            <result property="transactionsCount" column="transactions_count" jdbcType="INTEGER"/>
+            <result property="epoch" column="epoch" jdbcType="OTHER"/>
+            <result property="startNumber" column="start_number" jdbcType="BIGINT"/>
+            <result property="epochLength" column="epoch_length" jdbcType="INTEGER"/>
+            <result property="epochNumber" column="epoch_number" jdbcType="BIGINT"/>
+            <result property="dao" column="dao" jdbcType="OTHER"/>
+            <result property="proposalsHash" column="proposals_hash" jdbcType="OTHER"/>
+            <result property="extraHash" column="extra_hash" jdbcType="OTHER"/>
+            <result property="extension" column="extension" jdbcType="OTHER"/>
+            <result property="proposals" column="proposals" jdbcType="OTHER"/>
+            <result property="proposalsCount" column="proposals_count" jdbcType="INTEGER"/>
+            <result property="unclesCount" column="uncles_count" jdbcType="INTEGER"/>
+            <result property="uncleBlockHashes" column="uncle_block_hashes" jdbcType="OTHER"/>
+            <result property="minerScript" column="miner_script" jdbcType="OTHER"/>
+            <result property="minerMessage" column="miner_message" jdbcType="VARCHAR"/>
+            <result property="reward" column="reward" jdbcType="BIGINT"/>
+            <result property="totalTransactionFee" column="total_transaction_fee" jdbcType="BIGINT"/>
+            <result property="cellConsumed" column="cell_consumed" jdbcType="BIGINT"/>
+            <result property="totalCellCapacity" column="total_cell_capacity" jdbcType="BIGINT"/>
+            <result property="blockSize" column="block_size" jdbcType="INTEGER"/>
+            <result property="cycles" column="cycles" jdbcType="BIGINT"/>
+            <result property="liveCellChanges" column="live_cell_changes" jdbcType="INTEGER"/>
+    </resultMap>
+
+    <sql id="Base_Column_List">
+        id,block_hash,block_number,
+        compact_target,parent_hash,nonce,
+        difficulty,timestamp,version,
+        transactions_root,transactions_count,epoch,
+        start_number,epoch_length,epoch_number,
+        dao,proposals_hash,extra_hash,
+        extension,proposals,proposals_count,
+        uncles_count,uncle_block_hashes,miner_script,
+        miner_message,reward,total_transaction_fee,
+        cell_consumed,total_cell_capacity,block_size,
+        cycles,live_cell_changes
+    </sql>
+
+  <select id="getCommonStatisticInfo" resultType="com.ckb.explore.worker.domain.dto.CommonStatisticInfoDto">
+    SELECT SUM(transactions_count)    AS transactions_count,
+           MAX(block_number)          AS max_block_number,
+           MIN(block_number)          AS min_block_number,
+           MAX(timestamp)             AS max_timestamp,
+           MIN(timestamp)             AS min_timestamp,
+           COUNT(*)                   AS total_blocks_count,
+           SUM(live_cell_changes)     AS live_cells_count,
+           SUM(total_transaction_fee) AS total_tx_fee,
+           SUM(uncles_count)          AS total_uncles_count,
+           MAX(epoch_number)          AS max_epoch_number
+    FROM block
+    WHERE timestamp &gt;= #{startAt} AND  timestamp &lt; #{endAt}
+  </select>
+
+  <select id="findEpochWithBlockNumberByTime" resultType="com.ckb.explore.worker.domain.dto.EpochWithBlockNumberDto">
+    SELECT DISTINCT ON (epoch_number)
+    epoch_number,
+    difficulty AS difficulty,
+    MIN(block_number) OVER w AS first_block_number,
+    MAX(block_number) OVER w AS last_block_number
+    FROM block
+    WHERE timestamp &gt;= #{startAt} AND  timestamp &lt; #{endAt}
+    WINDOW w AS (PARTITION BY epoch_number)
+    ORDER BY epoch_number, timestamp ASC;
+  </select>
+
+  <select id="getBlockTimeDistribution" resultType="com.ckb.explore.worker.domain.dto.BlockTimeDistributionDto">
+    WITH
+    -- 生成所有桶：0 到 499（对应 0.1 ~ 50.0 秒）
+    all_buckets AS (
+    SELECT
+    generate_series(0, 499) AS bucket_index
+    ),
+    -- 原始数据分桶
+    block_buckets AS (
+    SELECT
+    FLOOR(block_interval / 100.0) AS bucket_index,
+    COUNT(*) AS block_count
+    FROM block
+    WHERE block_number BETWEEN #{startBlockNumber} AND #{tipBlockNumber}
+    AND block_interval IS NOT NULL
+    AND block_interval &gt;= 0
+    AND block_interval &lt; 50000  -- 可选：过滤异常大值（>50s）
+    GROUP BY FLOOR(block_interval / 100.0)
+    )
+    -- 主查询：左连接所有桶
+    SELECT
+    ROUND( (ab.bucket_index * 0.1 + 0.1)::NUMERIC, 1 ) AS second_upper_bound,
+    COALESCE(bb.block_count, 0) AS block_count
+    FROM all_buckets ab
+    LEFT JOIN block_buckets bb ON ab.bucket_index = bb.bucket_index
+    ORDER BY ab.bucket_index;
+  </select>
+
+  <select id="findEpochInfoByTargetEpochNumber" resultType="com.ckb.explore.worker.domain.dto.EpochInfoDto">
+    WITH
+    -- 1. 基础区块信息（一次扫描，复用结果）
+    block_base AS (
+        SELECT id,
+               difficulty,
+               epoch_length,
+               timestamp,
+               uncles_count,
+               block_number,
+               block_size,
+               cycles
+        FROM block te
+        WHERE epoch_number = #{epochNumber}
+    ),
+    -- 2. 合并首块信息与统计结果（避免GROUP BY bytea）
+    common_info AS (
+        SELECT DISTINCT difficulty, -- 假设单epoch内difficulty唯一
+                        MAX(epoch_length) OVER () AS epoch_length,
+                        MIN(timestamp) OVER ()    AS min_timestamp,
+                        MAX(timestamp) OVER ()    AS max_timestamp,
+                        SUM(uncles_count) OVER () AS uncles_count,
+                        COUNT(*) OVER ()          AS blocks_count
+        FROM block_base
+    ),
+    -- 3. 最大区块（基于 block_base 筛选，复用已有数据）
+    largest_block AS (
+        SELECT block_number,
+               block_size
+        FROM block_base
+        ORDER BY block_size DESC
+        LIMIT 1
+    ),
+    -- 4. 最大 cycles 区块（基于 block_base 筛选）
+    max_cycles_block AS (
+        SELECT cycles
+        FROM block_base
+        ORDER BY cycles DESC
+        LIMIT 1
+    ),
+    -- 5. 交易相关统计（关联一次区块表，筛选目标 epoch）
+    tx_stats AS (
+        SELECT
+            -- 最大字节数交易
+            (ARRAY_AGG(ct.tx_hash ORDER BY ct.bytes DESC))[1] AS largest_tx_hash,
+            MAX(ct.bytes)                                     AS largest_tx_bytes,
+            -- 最大 cycles 交易
+            MAX(ct.cycles)                                    AS max_tx_cycles
+        FROM ckb_transaction ct
+                 JOIN block_base b ON ct.block_id = b.id
+    )
+-- 最终聚合结果
+    SELECT ci.difficulty,
+           ci.epoch_length,
+           ci.min_timestamp,
+           ci.max_timestamp,
+           ci.uncles_count,
+           ci.blocks_count,
+           ts.largest_tx_hash,
+           ts.largest_tx_bytes,
+           ts.max_tx_cycles,
+           mcb.cycles      AS max_block_cycles,
+           lb.block_number AS largest_block_number,
+           lb.block_size   AS largest_block_size
+    FROM common_info ci
+           CROSS JOIN tx_stats ts -- 交易统计只有一条记录，直接关联
+           LEFT JOIN largest_block lb ON true
+           LEFT JOIN max_cycles_block mcb ON true;
+  </select>
+
+  <select id="getBlockDaos" resultType="com.ckb.explore.worker.domain.dto.BlockDaoDto">
+    SELECT block_number ,
+           dao,
+            timestamp
+    FROM block
+    <where>
+      <if test="blockNumbers != null">
+        AND block_number IN
+        <foreach item="item" collection="blockNumbers" separator="," open="(" close=")" index="index">
+          #{item}
+        </foreach>
+      </if>
+    </where>
+  </select>
+
+  <select id="getMinerWithRewardsByDate" resultType="com.ckb.explore.worker.domain.dto.MinerRewardDto">
+    SELECT
+      b1.miner_script,
+      COUNT(b1.block_number) AS count,
+      SUM(b2.reward) AS user_reward -- 对应的总奖励（取块号+11的块的reward）
+    FROM
+      block b1
+    -- 自关联：匹配b1.block_number+11 = b2.block_number（即奖励对应的块）
+    LEFT JOIN block b2
+      ON b1.block_number + 11 = b2.block_number
+    WHERE
+      b1.timestamp &gt;= #{startAt} AND b1.timestamp &lt; #{endAt}
+    -- 按矿工分组统计
+    GROUP BY
+      b1.miner_script
+    ORDER BY
+      user_reward
+  </select>
+</mapper>

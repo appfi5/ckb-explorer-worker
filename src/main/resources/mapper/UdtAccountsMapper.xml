@@ -1,0 +1,23 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper
+        PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.ckb.explore.worker.mapper.UdtAccountsMapper">
+
+    <resultMap id="BaseResultMap" type="com.ckb.explore.worker.entity.UdtAccounts">
+            <result property="typeScriptId" column="type_script_d" jdbcType="BIGINT"/>
+            <result property="amount" column="amount" jdbcType="BIGINT"/>
+           <result property="lockScriptId" column="lock_script_d" jdbcType="BIGINT"/>
+    </resultMap>
+
+    <sql id="Base_Column_List">
+        type_script_d,amount,lock_script_d
+    </sql>
+
+
+    <select id="findUdtAccountByTypeScriptIdAndLockScriptId" resultMap="BaseResultMap">
+        select * from udt_accounts u
+        where u.type_script_id = #{typeScriptId} and u.lock_script_id = #{lockScriptId}
+    </select>
+
+</mapper>

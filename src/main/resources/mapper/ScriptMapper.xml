@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper
+        PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.ckb.explore.worker.mapper.ScriptMapper">
+
+    <resultMap id="BaseResultMap" type="com.ckb.explore.worker.entity.Script">
+            <id property="id" column="id" jdbcType="BIGINT"/>
+            <result property="codeHash" column="code_hash" jdbcType="OTHER"/>
+            <result property="hashType" column="hash_type" jdbcType="SMALLINT"/>
+            <result property="args" column="args" jdbcType="OTHER"/>
+            <result property="scriptHash" column="script_hash" jdbcType="OTHER"/>
+    </resultMap>
+
+    <sql id="Base_Column_List">
+        id,code_hash,hash_type,
+        args,script_hash
+    </sql>
+</mapper>
