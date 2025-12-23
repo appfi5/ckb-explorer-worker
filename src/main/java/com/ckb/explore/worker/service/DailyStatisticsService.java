@@ -27,4 +27,6 @@ public interface DailyStatisticsService extends IService<DailyStatistics> {
   void reSetOccupiedCapacityWithHolderCount();
 
   DailyStatistics getHashRateByDate(Long  date);
+
+  void reSetTreasuryAmount();
 }
