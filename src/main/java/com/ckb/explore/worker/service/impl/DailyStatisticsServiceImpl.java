@@ -366,7 +366,7 @@ public class DailyStatisticsServiceImpl extends ServiceImpl<DailyStatisticsMappe
 //    stat.setEstimatedApc(calculateEstimatedApc(startedAt, endedAt, yesterdayStat)); 页面不查，先不管
 
       // 国库金额 CKB总供应量
-      var treasuryAmount = calculateTreasuryAmount(commonStatisticInfo.getMaxBlockNumber(), unmadeInterests);
+      var treasuryAmount = calculateTreasuryAmount(commonStatisticInfo.getMaxBlockNumber(), unclaimedCompensation);
       stat.setTreasuryAmount(treasuryAmount.toString());
 
       // 总存款者数量(包含了已经提款的)
@@ -979,11 +979,11 @@ public class DailyStatisticsServiceImpl extends ServiceImpl<DailyStatisticsMappe
   /**
      * 截止到endedAt的CKB总供应量
      * @param maxBlockNumber 最大区块高度
-     * @param unmadeDaoInterests 未完成DAO的利息
+     * @param unclaimedCompensation 未领取的DAO利息
      * @return 截止到endedAt的CKB总供应量
      */
-    private BigInteger calculateTreasuryAmount(Long maxBlockNumber, BigInteger unmadeDaoInterests){
-      log.debug("开始计算国库金额，块高: {}, 未认领利息: {}", maxBlockNumber, unmadeDaoInterests);
+    private BigInteger calculateTreasuryAmount(Long maxBlockNumber, BigInteger unclaimedCompensation){
+      log.debug("开始计算国库金额，块高: {}, 未认领利息: {}", maxBlockNumber, unclaimedCompensation);
       try {
         byte[] tipBlockDao = blockService.getDaoByBlockNumber(maxBlockNumber);
         if(tipBlockDao == null){
@@ -997,15 +997,15 @@ public class DailyStatisticsServiceImpl extends ServiceImpl<DailyStatisticsMappe
           return BigInteger.ZERO;
         }
 
-        // 确保unmadeDaoInterests不为null
-        if (unmadeDaoInterests == null) {
-          unmadeDaoInterests = BigInteger.ZERO;
+        // 确保unclaimedCompensation不为null
+        if (unclaimedCompensation == null) {
+          unclaimedCompensation = BigInteger.ZERO;
         }
 
         // 计算结果并确保非负
-        BigInteger result = parseDao.getSI().subtract(unmadeDaoInterests);
+        BigInteger result = parseDao.getSI().subtract(unclaimedCompensation);
         if (result.compareTo(BigInteger.ZERO) < 0) {
-          log.warn("国库金额计算结果为负，设置为0，SI: {}, unmadeDaoInterests: {}", parseDao.getSI(), unmadeDaoInterests);
+          log.warn("国库金额计算结果为负，设置为0，SI: {}, unclaimedCompensation: {}", parseDao.getSI(), unclaimedCompensation);
           result = BigInteger.ZERO;
         }
         
@@ -1078,6 +1078,29 @@ public class DailyStatisticsServiceImpl extends ServiceImpl<DailyStatisticsMappe
       return baseMapper.selectOne(queryWrapper);
   }
 
+  @Async("asyncStatisticTaskExecutor")
+  @Override
+  public void reSetTreasuryAmount(){
+
+    RLock lock = redissonClient.getLock(DAILY_STATISTIC_RESET_LOCK_KEY);
+    try (AutoReleaseRLock autoReleaseRLock = new AutoReleaseRLock(lock, LOCK_WAIT_TIME, TimeUnit.SECONDS)){
+      log.info("开始重置每日统计表 treasury_amount 字段");
+      LambdaQueryWrapper<DailyStatistics> queryWrapper = new LambdaQueryWrapper<>();
+      queryWrapper.orderByAsc(DailyStatistics::getCreatedAtUnixtimestamp);
+      var dailyStatistics = baseMapper.selectList(queryWrapper);
+      for(DailyStatistics item :dailyStatistics){
+        var treasuryAmount = calculateTreasuryAmount(item.getMaxBlockNumber(), new BigInteger(item.getUnclaimedCompensation()));
+        item.setTreasuryAmount(treasuryAmount.toString());
+        var miningReward = calculateMiningReward(item.getMaxBlockNumber(), new BigInteger(item.getDepositCompensation()), treasuryAmount);
+        item.setMiningReward(miningReward.toString());
+        item.setUpdatedAt(OffsetDateTime.now());
+      }
+      baseMapper.updateById(dailyStatistics);
+      log.info("重置每日统计表 treasury_amount 字段完成");
+    } catch (Exception e) {
+      log.error("每日统计 reSetTreasuryAmount 任务执行异常", e);
+    }
+  }
 }
 
 

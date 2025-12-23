@@ -52,6 +52,11 @@ public class ResetDailyStatisticsController {
           log.info("reset occupied_capacity holder_count");
           dailyStatisticsService.reSetOccupiedCapacityWithHolderCount();
           break;
+        case "treasury_amount":
+          log.info("reset treasury_amount");
+          dailyStatisticsService.reSetTreasuryAmount();
+          break;
+
       }
     }
 
