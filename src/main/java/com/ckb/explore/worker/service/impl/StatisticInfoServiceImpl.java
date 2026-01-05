@@ -2,6 +2,7 @@ package com.ckb.explore.worker.service.impl;
 
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.baomidou.mybatisplus.extension.service.impl.ServiceImpl;
+import com.ckb.explore.worker.domain.dto.TransactionConfirmationTimeDto;
 import com.ckb.explore.worker.entity.LastNDaysTransactionFeeRates;
 import com.ckb.explore.worker.entity.TransactionFeeRates;
 import com.ckb.explore.worker.entity.Block;
@@ -9,6 +10,7 @@ import com.ckb.explore.worker.entity.StatisticInfo;
 import com.ckb.explore.worker.entity.UncleBlock;
 import com.ckb.explore.worker.mapper.Address24hTransactionMapper;
 import com.ckb.explore.worker.mapper.BlockMapper;
+import com.ckb.explore.worker.mapper.CkbPendingTransactionMapper;
 import com.ckb.explore.worker.mapper.StatisticInfoMapper;
 import com.ckb.explore.worker.mapper.UncleBlockMapper;
 import com.ckb.explore.worker.mapper.CkbTransactionMapper;
@@ -16,7 +18,12 @@ import com.ckb.explore.worker.service.StatisticInfoService;
 import jakarta.annotation.Resource;
 import java.math.BigDecimal;
 import java.math.RoundingMode;
+import java.util.ArrayList;
+import java.util.Comparator;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
+import java.util.stream.Collectors;
 import org.nervos.ckb.utils.Numeric;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
@@ -46,6 +53,9 @@ public class StatisticInfoServiceImpl extends ServiceImpl<StatisticInfoMapper, S
 
   @Resource
   private CkbTransactionMapper ckbTransactionMapper;
+
+  @Resource
+  private CkbPendingTransactionMapper ckbPendingTransactionMapper;
 
   @Override
   public BigDecimal hashRate(Long tipBlockNumber){
@@ -203,10 +213,35 @@ public class StatisticInfoServiceImpl extends ServiceImpl<StatisticInfoMapper, S
   @Override
   public List<TransactionFeeRates> getTransactionFeeRates() {
 
+    // 从pg库查最新的一万条交易
     List<TransactionFeeRates> transactions = ckbTransactionMapper.selectRecentTransactionFeeRates();
-    
-    // 转换为TransactionFeeRates列表
-    return transactions;
+
+    // 转成以hash为key的map
+    Map<String, TransactionFeeRates> transactionMap = transactions.stream()
+        .collect(Collectors.toMap(TransactionFeeRates::getTxHash, transaction -> transaction,
+            (oldVal, newVal) -> newVal, () -> new HashMap<>(transactions.size())));
+    // 从pending库查最新确认的一万条交易
+    List<TransactionConfirmationTimeDto> transactionConfirmationTimes = ckbPendingTransactionMapper.selectTransactionConfirmationTimes();
+
+    List<TransactionFeeRates> result = transactionConfirmationTimes.stream()
+        .map(transactionConfirmationTime -> {
+          String txHash = transactionConfirmationTime.getTxHash();
+          var transaction = transactionMap.get(txHash);
+          if (transaction == null) {
+            // 交易不存在时返回null，后续过滤
+            return null;
+          }
+          return new TransactionFeeRates(
+              transaction.getId(),
+              transaction.getTxHash(),
+              transaction.getFeeRate(),
+              transaction.getTimestamp(),
+              transactionConfirmationTime.getConfirmationTime());
+        }).filter(tx -> tx != null && tx.getId() != null)
+        .sorted(Comparator.comparing(TransactionFeeRates::getId))
+        .collect(Collectors.toList());
+
+    return result;
   }
 
   @Override

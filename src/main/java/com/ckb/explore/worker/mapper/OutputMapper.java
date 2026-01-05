@@ -76,6 +76,15 @@ public interface OutputMapper extends BaseMapper<Output> {
 
     @Select("select * from output where type_script_id = #{typeScriptId}  limit 1")
     Output selectOneByTypeScriptId(@Param("typeScriptId") Long typeScriptId);
+
+
+    @Select("select * from output where type_script_id = #{typeScriptId} and is_spent=0  limit 1")
+    Output selectLiveCellByTypeScriptId(@Param("typeScriptId") Long typeScriptId);
+
+
+
+    @Select("select * from output where type_script_id = #{typeScriptId} ")
+    List<Output> selectByTypeScriptId(@Param("typeScriptId") Long typeScriptId);
 }
 
 

@@ -16,6 +16,11 @@ spring:
           url: ${RISINGWAVE_URL}
           username: ${RISINGWAVE_USERNAME}
           password: ${RISINGWAVE_PASSWORD}
+        pending:
+          driver-class-name: org.postgresql.Driver
+          url: ${RISINGWAVE_PENDING_URL}
+          username: ${RISINGWAVE_PENDING_USERNAME}
+          password: ${RISINGWAVE_PENDING_PASSWORD}
   data:
     redis:
       host: ${REDIS_HOST}
@@ -189,3 +194,23 @@ script:
       codeHash: "0xcfba73b58b6f30e70caed8a999748781b164ef9a1e218424a6fb55ebf641cb33"
       hashType: "type"
       cellType: 18
+    - name: "omiga_inscription_info"
+      codeHash: "0x5c33fc69bd72e895a63176147c6ab0bb5758d1c7a32e0914f99f9ec1bed90d41"
+      hashType: "type"
+      cellType: 13
+    - name: "m_nft_class"
+      codeHash: "0xd51e6eaf48124c601f41abe173f1da550b4cbca9c6a166781906a287abbb3d9a"
+      hashType: "type"
+      cellType: 5
+    - name: "m_nft_token"
+      codeHash: "0x2b24f0d644ccbdd77bbf86b27c8cca02efa0ad051e447c212636d9ee7acaaec9"
+      hashType: "type"
+      cellType: 6
+    - name: "cota_registry"
+      codeHash: "0x90ca618be6c15f5857d3cbd09f9f24ca6770af047ba9ee70989ec3b229419ac7"
+      hashType: "type"
+      cellType: 9
+    - name: "cota_regular"
+      codeHash: "0x1122a4fb54697cf2e6e3a96c9d80fd398a936559b90954c6e88eb7ba0cf652df"
+      hashType: "type"
+      cellType: 10

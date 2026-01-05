@@ -32,13 +32,16 @@ public interface ScriptMapper extends BaseMapper<Script> {
           "</foreach>\n" +
           "order by id asc  limit #{limit} \n" +
           "</script>")
-  List<Script> getBatchSporeById(@Param("lastId") long lastId,@Param("codeHashes") List<byte[]> codeHashes, @Param("limit") int limit);
+  List<Script> getBatchCodeHashesAndId(@Param("lastId") long lastId, @Param("codeHashes") List<byte[]> codeHashes, @Param("limit") int limit);
 
   @Select("SELECT id from script where code_hash = #{code_hash} and is_typescript = 0")
   List<Long> getZeroLockScriptId(@Param("code_hash") byte[] code_hash);
 
   @Select("SELECT * from script where code_hash = #{code_hash} and is_typescript = 0")
   List<Script> getZeroLockScripts(@Param("code_hash") byte[] code_hash);
+
+  @Select("SELECT * from script where script_hash = #{script_hash} ")
+  Script findByScriptHashScript(@Param("script_hash") byte[] script_hash);
 }
 
 

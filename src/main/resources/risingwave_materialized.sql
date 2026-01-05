@@ -11,13 +11,13 @@ CREATE SOURCE pg_mydb WITH (
     debezium.slot.drop.on.stop = 'true'
 );
 
-CREATE FUNCTION udt_amount(bytea) RETURNS bigint LANGUAGE rust AS $$
-    fn udt_amount(data: &[u8]) -> i64 {
+CREATE FUNCTION udt_amount(bytea) RETURNS NUMERIC LANGUAGE rust AS $$
+    fn udt_amount(data: &[u8]) -> u128 {
         let mut bytes = [0u8; 16];
 let len = data.len().min(16);
 bytes[..len].copy_from_slice(&data[..len]);
-let value = u128::from_le_bytes(bytes);
-value as i64
+let value: u128 = u128::from_le_bytes(bytes);
+value
 }
 $$;
 

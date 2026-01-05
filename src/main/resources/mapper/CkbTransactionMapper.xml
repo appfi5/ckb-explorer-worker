@@ -71,10 +71,10 @@
     </select>
 
     <select id="selectRecentTransactionFeeRates" resultType="com.ckb.explore.worker.entity.TransactionFeeRates">
-      SELECT id                                                     as id,
-             ROUND((transaction_fee::NUMERIC / bytes::NUMERIC), 16) as fee_rate,
-             block_timestamp                                        as timestamp,
-             30                                                     as confirmation_time -- 暂时固定30秒
+      SELECT id                                                           as id,
+             '0x' || encode(tx_hash, 'hex')                               as tx_hash,
+             ROUND((transaction_fee::NUMERIC / (bytes + 4)::NUMERIC), 16) as fee_rate,
+             block_timestamp / 1000                                       as timestamp
       FROM ckb_transaction
       WHERE bytes > 0
         AND transaction_fee > 0
@@ -96,7 +96,7 @@
       -- 计算“按天分组的键”（整数，如 17180 代表 2024-06-10），仅用于后续分组
       (block_timestamp / 86400000)::BIGINT        AS day_key,
       -- 提前计算“单条交易的费率”（避免分组时重复计算，提升性能）
-      (transaction_fee::NUMERIC / bytes::NUMERIC) AS fee_per_byte
+      (transaction_fee::NUMERIC / (bytes + 4)::NUMERIC) AS fee_per_byte
       FROM ckb_transaction
       WHERE
       -- 1. 基础过滤：排除无效交易（bytes/交易费为0无意义）
