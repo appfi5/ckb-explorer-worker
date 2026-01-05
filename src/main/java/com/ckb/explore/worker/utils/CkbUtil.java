@@ -7,10 +7,12 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import lombok.AllArgsConstructor;
 import lombok.Data;
 import lombok.NoArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.nervos.ckb.utils.AmountUtils;
 
 import java.math.BigInteger;
 import java.nio.charset.StandardCharsets;
+import java.util.Arrays;
 import java.util.HexFormat;
 import java.util.Map;
 import java.util.regex.Pattern;
@@ -18,6 +20,7 @@ import java.util.regex.Pattern;
 import org.nervos.ckb.utils.Numeric;
 import org.springframework.util.StringUtils;
 
+@Slf4j
 public class CkbUtil {
 
     private static final Pattern ASCII_PATTERN = Pattern.compile("^[\\x21-\\x7E]+(?:\\s[\\x21-\\x7E]+)?$");
@@ -92,6 +95,7 @@ public class CkbUtil {
 
         } catch (Exception e) {
             // 发生任何异常时返回默认值
+            log.error("parseTokenClassData error",e);
             return getDefaultTokenClassData();
         }
     }
@@ -230,6 +234,7 @@ public class CkbUtil {
             return new SporeCellData(contentType,content,clusterId);
 
         } catch (Exception e) {
+            log.error("parseSporeCellData error",e);
             // 发生任何异常时返回空值
             return new SporeCellData();
         }
@@ -252,56 +257,62 @@ public class CkbUtil {
         private  String name;
         private  String symbol;
         private String udtHash;
-        private long expectedSupply;
-        private long mintLimit;
+        private BigInteger expectedSupply;
+        private BigInteger mintLimit;
         private int mintStatus;
     }
 
     public static OmigaInscriptionBasicInfo parseOmigaInscriptionInfo(String hexData) {
-        // 移除前缀"0x"
-        String data = hexData.startsWith("0x") ? hexData.substring(2) : hexData;
+        try {
+            // 移除前缀"0x"
+            String data = hexData.startsWith("0x") ? hexData.substring(2) : hexData;
 
-        // 解析decimal值
-        int decimal = Integer.parseInt(data.substring(0, 2), 16);
-        data = data.substring(2);
+            // 解析decimal值
+            int decimal = Integer.parseInt(data.substring(0, 2), 16);
+            data = data.substring(2);
 
-        // 解析名称
-        int nameLen = Integer.parseInt(data.substring(0, 2), 16);
-        data = data.substring(2);
-        String name = hexToString(data.substring(0, nameLen * 2));
-        data = data.substring(nameLen * 2);
+            // 解析名称
+            int nameLen = Integer.parseInt(data.substring(0, 2), 16);
+            data = data.substring(2);
+            String name = hexToString(data.substring(0, nameLen * 2));
+            data = data.substring(nameLen * 2);
 
-        // 解析符号
-        int symbolLen = Integer.parseInt(data.substring(0, 2), 16);
-        data = data.substring(2);
-        String symbol = hexToString(data.substring(0, symbolLen * 2));
-        data = data.substring(symbolLen * 2);
+            // 解析符号
+            int symbolLen = Integer.parseInt(data.substring(0, 2), 16);
+            data = data.substring(2);
+            String symbol = hexToString(data.substring(0, symbolLen * 2));
+            data = data.substring(symbolLen * 2);
 
-        // 解析udt_hash
-        String udtHash = "0x" + data.substring(0, 64);
-        data = data.substring(64);
+            // 解析udt_hash
+            String udtHash = "0x" + data.substring(0, 64);
+            data = data.substring(64);
 
-        // 解析expected_supply (需要字节反转)
-        String expectedSupplyHex = data.substring(0, 32);
-        data = data.substring(32);
-        long expectedSupply = hexToLongWithByteReverse(expectedSupplyHex);
+            // 解析expected_supply (需要字节反转)
+            String expectedSupplyHex = data.substring(0, 32);
+            data = data.substring(32);
+//            long expectedSupply = hexToLongWithByteReverse(expectedSupplyHex);
+            BigInteger expectedSupply = hexToBigIntegerWithByteReverse(expectedSupplyHex);
+            // 解析mint_limit (需要字节反转)
+            String mintLimitHex = data.substring(0, 32);
+            data = data.substring(32);
+//            long mintLimit = hexToLongWithByteReverse(mintLimitHex);
+             BigInteger mintLimit = hexToBigIntegerWithByteReverse(mintLimitHex);
+            // 解析mint_status
+            int mintStatus = Integer.parseInt(data.substring(0, 2), 16);
+            data = data.substring(2);
 
-        // 解析mint_limit (需要字节反转)
-        String mintLimitHex = data.substring(0, 32);
-        data = data.substring(32);
-        long mintLimit = hexToLongWithByteReverse(mintLimitHex);
+            return new OmigaInscriptionBasicInfo(decimal, name, symbol, udtHash, expectedSupply, mintLimit, mintStatus);
+        }catch (Exception e){
+            log.error("OmigaInscriptionBasicInfo error",e);
 
-        // 解析mint_status
-        int mintStatus = Integer.parseInt(data.substring(0, 2), 16);
-        data = data.substring(2);
-
-        return new OmigaInscriptionBasicInfo(decimal,name,symbol,udtHash,expectedSupply,mintLimit,mintStatus);
+            return new OmigaInscriptionBasicInfo();
+        }
     }
 
-    private static long hexToLongWithByteReverse(String hex) {
+    private static BigInteger hexToBigIntegerWithByteReverse(String hex) {
         // 确保十六进制字符串长度为32
         if (hex == null || hex.length() != 32) {
-            return 0;
+            return BigInteger.ZERO;
         }
         // 反转字节顺序
         StringBuilder reversedHex = new StringBuilder();
@@ -309,7 +320,8 @@ public class CkbUtil {
             reversedHex.append(hex.substring(i, i + 2));
         }
         // 转换为长整数
-        return Long.parseLong(reversedHex.toString(), 16);
+        return  new BigInteger(reversedHex.toString(),16);
+
     }
 
 
@@ -394,7 +406,7 @@ public class CkbUtil {
 
         } catch (Exception e) {
             // 发生异常时返回
-            e.printStackTrace();
+            log.error("parseSporeClusterData error",e);
             return new SporeClusterData();
         }
     }
@@ -529,9 +541,4 @@ public class CkbUtil {
         return StringUtils.hasLength(name)&&name.length()>60;
     }
 
-    public  static  void  main(String[] args){
-      StringBuffer outputData = new StringBuffer();
-      outputData.append("0x650a0000100000001d000000650a000009000000696d6167652f706e67440a000089504e470d0a1a0a0000000d4948445200000064000000640803000000473c656600000237504c5445c7cdebfffcf4c7cdeb000000020100f8eac7ffc43bb7690ff6a02ec6cceaffffffadb1c6020202f49c22acb0c5b6690f807d75fdfaf2b0b5cc9ba5d9f8e9c67c4100b1b6cdb76b0fc5cbe8fec33b84220ffffefef69f2eacb0c4ef8624c1770fe78923ca9419da8413f0ddb1db8513b4b9d4f49e2dffc43c360902fefdfcf8e8c5f4cb94fdc23bee85249aa4d8f2dfb2fadfa0b3650d6e2e017b4100f5e7c4f3e5c3f9e0bcf9e4b375726bfdcf64fd8959f6bc45fbc039f9af2eb1610d723800f9f5f0f6f2ecc1c7e6acb5e2a9b0ccf8dbb6fadb91fbd988fcd57bfd9566fdc44ff8aa2a141413ad5d0da7530da34f0c1602010b0300faf6f2e9e9e9b7bee4bbc0ddf1e3c0f8e8bff0d9ba999db0f9d5aff8e2adf9d2acf9e2a8f9cea7facaa3ffe19bfadd99f1c585fdd883fbad83fbd2727d7a72fb9d707a7870fcd16c6c6962fd7844ecb636f29128f08c26f6a225dda524e88a23d97a20e7921de2891d82210ead5a0c893c086030074c1a05662903210601783d00fffcf6efece5ebe8e1a4aedca4addcfff2d4b3b8d3949ed0fce8cce5d0cb8f99c8ffecc0dec5bfbcbcbc9fa3b7ffe8b37e86b1facba4f5d8a3eccc9dedcb99fabd94c29389fbb287fba77af2c676f4ba6cad6c5f63615bfccb59f27e4ffd804efd7f4dffc744f8b03ffe6f3bfcba35e7b235f6a635964433fbb632d9a732f5a130e9972cb88c2bdc8e29c78225222222db8221ef9820cc731ec17b1a892c1a040418312814b76c10923710b8710e2a210da9580c96460a6e2306551903431403dee61b780000000174524e53fe1ae3077d000007a14944415468deecd6cf6b13411407f0d6ef38531696a6600e2592984b63a91e2a142ab4a0e7aa5804cfa2504aa9582c58f1d7c19307efe24550503c88088228f8c7f9de9b797d4e68bbd934851ef2856e9609799f7933dd4c26ce9c7c26c6c86945264f2c63648c4c6a4e03829493400cb8e43990b8512352df52705ae48c10016080229c79b81121c0acd5eec94d4f9516dc4810209bbf97bcdd57ba70c74680428d0f4501e0b5ed3cdc9d96f73b70c744805e1456c0590c78c34248994ed8b1100800ca5e087b5cfd265fb00c4da2dcf00822100034b4e8b3108046c38638d370c3223a5334a4ace4c91780011b72decff2cb7008424a366fef9f2e32b04597f7a0ac3b4fe9c2d542ccb8821856b69292f6c86030224a7d0494955471d9564790200a8fcb8698520fb147107df3d6b1cdc6060d6d5a2b3ba654226628a2ca06fd85884c67f0df4fb195565da4287244166c99915cb1f57a5014a254236624054115506e29f23b3023f91304e9e9d7e5a0c80d41ee29620fb7aee22cb2ef1627062b351032b495db5a4b0f46cb36244c30624a3562c64bef2323f19ad505c9fdb22c574d1c16f17df9fca8a4bc5b5880c4959c357df76a44bed5435afb532f358899e29c176897463fe6ad0c86c0cbb61bf0035a5d02319c4ad2112bf36c740746527879b4b804fdc85767102f5cb75b13112195855cf23ca7f22259476b359192a235a270f76c9e7390f75511a6d3a981ac88316506fa04759c0089bb8c4ea753859862ff4b17d5384481f5d3ae8744439b801a87f4a28620181881229239322a957634dcb5aa87315780871121e348059abc8d1c4186007479855d56daedb98a46284b4eba008e3e7e01984149afdf81c7f4f9dc409cbefbaf152702dccc11082b5a7a867f3b2452faa71c8c2c191209fa6cb3e2f88507a027bb36769d9d5f09110c58d2ca8e2eeb2e228ea787661532896d2a1e05b0a201ac094a367f17ef98f88926801755673c1221b79952b1f1d4546ce3029a15882880563605ffdab5ef1627a2280ae030f724d9318f0c934427c655c2ae75117b41057bc7debbd810110445c5f2878a0d157b412c2828888a88a208fae53cefce8ccfa0718c822878d8dd6c3293f79bfbee1b92d94d674706334ed09b11de4cfbf06384417a20eef710833bcef642d51e714f8fdee8d1c73530b9ea382100fe60c622cc409a13866ad813b2df42c9f54cd8b4f5caa6093d3959c3a1d90d3eb261cbd62d73249d2aa58ea02d4423033a6c16a267c3ce0593272fb835a7476c0c910937f888a010c898ded30431c5527e1179841cb0fbe1debd0f768be6f16d227376de1704c154de9fd61b0789d8f525a67de4c0be8e8e279c9cb513219a828da0ca565842e252c6da491b3b06008d369150e4f5be676a6cde060269022b288160b1089569c71cd00e424387e1ba9ab879d4dc1d18fd9582a5da9b49bb209c310227d88cf61067889edc1b47cd9d377f8f38844ac0ef3df3e76da300ee0c8461db088dd13450cd09336adefc5d9310d8a48a963977d446e4ba4d1862601778d31e42e32820e249d5164067d2bd8502264811143e61d444982a7c08060eec1c0cb3c239d948c89e2fc6208b2c9b1a45ef62078dfd8d862a5a4940d28ccf75c3f3690c065e7402f869848404f02c02294cadcfa8471c160d3924d2900481c9d98cec365e8db365560a5e76746621ae0c40004f114fa2fa943bf9a55141f64b9d9104c1b82f862fe8423f5bea4f23a1707cf89ee72748f46658be4ea4d18ca40677b4850c03880cce429ca1f111238568d8f67537a34804340ec121d591dddd76e79ab6a4df3016225c625988337c5f92e90aa2a83e242e054cda1343a11b405cc85181806f6d8c0f84594808890d0812646814ade835e5eefb029546e3556240857c5fe3b3902e598461343a2dc9627e88d0f044cb40dfb4f1185a88eafdae4fb9905c9d12e097408ee76d86c3162222b8c842b4413e9596881a16f105796b29e2c947ced7bafc94a78524121c861981be36c3616a8a006021358b78545a233414a1d11729c252d89573d77a5d8ddc857ba55219011b53a99c4157d750a36d87a7882aad106d87f89ee4b5104518b1caf47ef5283504232a2ea74e824cdc765d6a2a6520e223414ec708acb2a41e45897119cfe1941af76055cbbb0e76428d9f4220f918f18560a28c0ebe1898354b8055ab667a5fa5729ee5181aa6fc3308ca6f130444a0db81a1439706364bf440cd70c0b769724cc55f6dca62321126aec4b77b02abe3e757000803543cc6ae70cdecaf15bf06d3a76cbc0cc48f77b0089a8e7356451daeaa1831fae77b3d15532126fad3606a3f40e027465fe90388739aa3a56886aba2024cb1d41fa9d11ae1c83e0d3e1952ee43c6cdfc37481c3687db675a8184985a6c98526b04e5b20805c0e37497e9104aa5262ebd5f1388a8c02a6092d698627fd30261b4b5120f05d024a4529a746ca431b301272801355a22218562918a32ea28a492261d3abdcf6d255861e657841a2d115e85a3542a02703303955a2526dd0203d6b33726eb450b522a169de3a46fe386770b8c6588c97ef9052e959c4329333ea382edff7ad0c84294011975546a69b9554081b1fdfff94b8719965148a5d47271a3ebf85a030913b6f73615705062b9b8d11df06b970e0e4a2d17377a13d03ee2206735a7ff22c001994866f0bd987ff7fff1ff11efb7f3577d96a829ff2af227f2197b1f0f48907ccc680000000e655849664d4d002a0000000800000000000000d253930000000049454e44ae426082");
-      System.out.println(parseSporeCellData(outputData.toString()));
-    }
 }

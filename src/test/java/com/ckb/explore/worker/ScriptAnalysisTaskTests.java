@@ -23,4 +23,9 @@ public class ScriptAnalysisTaskTests {
     public void scriptTypeTask(){
         scriptAnalysisTask.scriptTypeTask();
     }
+
+    @Test
+    public void mNftTask(){
+        scriptAnalysisTask.mNftTask();
+    }
 }

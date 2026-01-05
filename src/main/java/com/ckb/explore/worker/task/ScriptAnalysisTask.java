@@ -1,11 +1,11 @@
 package com.ckb.explore.worker.task;
 
-import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.ckb.explore.worker.config.ScriptConfig;
 import com.ckb.explore.worker.entity.*;
 import com.ckb.explore.worker.enums.CellType;
 import com.ckb.explore.worker.enums.HashType;
 import com.ckb.explore.worker.enums.LockType;
+import com.ckb.explore.worker.enums.NftType;
 import com.ckb.explore.worker.mapper.*;
 import com.ckb.explore.worker.utils.ByteUtils;
 import com.ckb.explore.worker.utils.CkbUtil;
@@ -13,13 +13,12 @@ import com.ckb.explore.worker.utils.TypeConversionUtil;
 import jakarta.annotation.Resource;
 import lombok.extern.slf4j.Slf4j;
 import org.nervos.ckb.utils.Numeric;
-import org.nervos.ckb.utils.address.Address;
 import org.redisson.api.*;
-import org.springframework.scheduling.annotation.Async;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Component;
 import org.springframework.util.StringUtils;
 
+import java.math.BigInteger;
 import java.util.*;
 import java.util.concurrent.TimeUnit;
 import java.util.regex.Pattern;
@@ -52,6 +51,8 @@ public class ScriptAnalysisTask {
     @Resource
     OutputDataMapper outputDataMapper;
 
+    @Resource OmigaInscriptionInfoMapper omigaInscriptionInfoMapper;
+
     private static final int BATCH_SIZE = 1000;
 
     private static final int SPORE_BATCH_SIZE = 100;
@@ -60,12 +61,21 @@ public class ScriptAnalysisTask {
 
     private static final String SPORE_TASK_SCRIPT_ID = "SPORE_TASK_SCRIPT_ID";
 
-    private static final String ERROR_TASK_SCRIPT_ID = "ERROR_TASK_SCRIPT_ID";
+    private static final String ERROR_SPORE_TASK_SCRIPT_ID = "ERROR_SPORE_TASK_SCRIPT_ID";
 
     private static final String SCRIPT_TASK_SCRIPT_ID = "SCRIPT_TASK_SCRIPT_ID";
 
     private static final Pattern CHINESE_ONLY_PATTERN = Pattern.compile("^[\\u4E00-\\u9FFF]+$");
     private static final Pattern VISIBLE_CHAR_PATTERN = Pattern.compile("^[\\x21-\\x7E\\u4E00-\\u9FFF]+(?:\\s[\\x21-\\x7E\\u4E00-\\u9FFF]+)*$");
+
+    private static final String M_NFT_CLASS_TASK_SCRIPT_ID = "M_NFT_CLASS_TASK_SCRIPT_ID";
+
+    private static final String M_NFT_TOKEN_TASK_SCRIPT_ID = "M_NFT_TOKEN_TASK_SCRIPT_ID";
+
+
+    private static final String OMIGA_TASK_SCRIPT_ID = "OMIGA_TASK_SCRIPT_ID";
+
+
 
     @Resource
     ScriptConfig scriptConfig;
@@ -103,7 +113,7 @@ public class ScriptAnalysisTask {
                 }
             });
 
-            List<Script> scripts = scriptMapper.getBatchSporeById(startId,codeHashes, SPORE_BATCH_SIZE);
+            List<Script> scripts = scriptMapper.getBatchCodeHashesAndId(startId,codeHashes, SPORE_BATCH_SIZE);
             if (scripts.isEmpty()) {
                 return;
             }
@@ -111,7 +121,7 @@ public class ScriptAnalysisTask {
             Long maxScriptId = scripts.stream().mapToLong(Script::getId).max().orElse(startId);
             for (Script script : scripts) {
 
-                dealDob(script);
+                dealNft(script);
             }
             sporeTaskId.set(maxScriptId);
         } catch (Exception e) {
@@ -135,14 +145,14 @@ public class ScriptAnalysisTask {
             if (!isLock) {
                 return;
             }
-            RSet<Long> errorTaskScriptIds = redissonClient.getSet(ERROR_TASK_SCRIPT_ID);
+            RSet<Long> errorTaskScriptIds = redissonClient.getSet(ERROR_SPORE_TASK_SCRIPT_ID);
             if (errorTaskScriptIds.isEmpty()) {
                 return;
             }
             errorTaskScriptIds.forEach(errorTaskScriptId -> {
                 Script script = scriptMapper.selectById(errorTaskScriptId);
                 errorTaskScriptIds.remove(errorTaskScriptId);
-                dealDob(script);
+                dealNft(script);
             });
 
         } catch (Exception e) {
@@ -189,8 +199,8 @@ public class ScriptAnalysisTask {
     }
 
 
-    private void dealDob(Script script) {
-        RSet<Long> errorTaskScriptId = redissonClient.getSet(ERROR_TASK_SCRIPT_ID);
+    private void dealNft(Script script) {
+        RSet<Long> errorTaskScriptId = redissonClient.getSet(ERROR_SPORE_TASK_SCRIPT_ID);
         try {
             //非typescript 不处理
             if(script.getIsTypescript()==0){
@@ -202,27 +212,50 @@ public class ScriptAnalysisTask {
             if(typeScript==null){
                 return;
             }
-            if ( Objects.equals(typeScript.getCellType(),CellType.SPORE_CLUSTER.getValue()) &&  HashType.DATA1.getCode() == hashType) {
-                //sporeCluster 中args为clusterId,非集群模式的统一在初始化sql里处理
-                if (script.getArgs() == null || script.getArgs().length == 0) {
-                    return;
+            boolean isSporeCluster = Objects.equals(typeScript.getCellType(),CellType.SPORE_CLUSTER.getValue()) &&  HashType.DATA1.getCode() == hashType;
+            boolean isMnftClass = Objects.equals(typeScript.getCellType(),CellType.M_NFT_CLASS.getValue()) &&  HashType.TYPE.getCode() == hashType;
+            boolean isSpore = Objects.equals(typeScript.getCellType(),CellType.SPORE_CELL.getValue()) && HashType.DATA1.getCode() == hashType;
+            boolean isDid = Objects.equals(typeScript.getCellType(),CellType.DID_CELL.getValue()) && HashType.TYPE.getCode() == hashType;
+            boolean isMnftToken = Objects.equals(typeScript.getCellType(),CellType.M_NFT_TOKEN.getValue()) && HashType.TYPE.getCode() == hashType;
+            if ( isSporeCluster || isMnftClass) {
+                //处理dobCode信息
+                Output output;
+                if(isMnftClass){
+                    output = outputMapper.selectLiveCellByTypeScriptId(script.getId());
+                }else {
+                    //dob会因为此处cell变更需要重新跑么?
+                    output   = outputMapper.selectOneByTypeScriptId(script.getId());
                 }
-                //处理sporeCluster
-                Output output = outputMapper.selectOneByTypeScriptId(script.getId());
+                //mnftClass可能存在不活跃数据
                 if(output==null){
-                    errorTaskScriptId.add(script.getId());
+                    if(!isMnftClass){
+                        errorTaskScriptId.add(script.getId());
+                    }
                     return;
                 }
-
-                CkbUtil.SporeClusterData sporeClusterData = CkbUtil.parseSporeClusterData(Numeric.toHexString(getOutputData(output)));
 
                 DobExtend dobExtend = new DobExtend();
+                if(isSporeCluster) {
+                    //sporeCluster 中args为clusterId,非集群模式的统一在初始化sql里处理
+                    if (script.getArgs() == null || script.getArgs().length == 0) {
+                        return;
+                    }
+                    CkbUtil.SporeClusterData sporeClusterData = CkbUtil.parseSporeClusterData(Numeric.toHexString(getOutputData(output)));
+                    dobExtend.setName(sporeClusterData.getName());
+                    dobExtend.setDescription(sporeClusterData.getDescription());
+                    dobExtend.setStandard(NftType.DOB.getCode());
+                }else if(isMnftClass){
+                    CkbUtil.TokenClassData tokenClassData = CkbUtil.parseTokenClassData(Numeric.toHexString(getOutputData(output)));
+                    dobExtend.setName(tokenClassData.getName());
+                    dobExtend.setDescription(tokenClassData.getDescription());
+                    dobExtend.setIconUrl(tokenClassData.getRenderer());
+                    dobExtend.setStandard(NftType.M_NFT.getCode());
+                }
                 dobExtend.setId(script.getId());
                 dobExtend.setDobScriptId(script.getId());
                 dobExtend.setArgs(script.getArgs());
                 dobExtend.setDobScriptHash(script.getScriptHash());
-                dobExtend.setName(sporeClusterData.getName());
-                dobExtend.setDescription(sporeClusterData.getDescription());
+
                 dobExtend.setLockScriptId(output.getLockScriptId());
                 Script lockScript = scriptMapper.selectById(output.getLockScriptId());
                 dobExtend.setBlockTimestamp(script.getTimestamp());
@@ -234,7 +267,7 @@ public class ScriptAnalysisTask {
                 dobExtendMapper.flush();
                 String tags = getTags(dobExtend.getName(),lockScript);
                 dobExtendMapper.updateTagsById(dobExtend.getId(),tags);
-            } else if ((Objects.equals(typeScript.getCellType(),CellType.SPORE_CELL.getValue()) && HashType.DATA1.getCode() == hashType) || (Objects.equals(typeScript.getCellType(),CellType.DID_CELL.getValue()) && HashType.TYPE.getCode() == hashType)) {
+            } else if (isSpore || isDid || isMnftToken) {
                      // 处理sporeNft
                     DobCode dobCode = new DobCode();
                     dobCode.setDobCodeScriptId(script.getId());
@@ -244,20 +277,34 @@ public class ScriptAnalysisTask {
                         errorTaskScriptId.add(script.getId());
                         return;
                     }
-                    CkbUtil.SporeCellData sporeCellData = CkbUtil.parseSporeCellData(Numeric.toHexString(getOutputData(output)));
-                    if (StringUtils.hasLength(sporeCellData.getClusterId())) {
-                        DobExtend dobExtend = dobExtendMapper.selectByArgs( Numeric.hexStringToByteArray(sporeCellData.getClusterId()));
+                    if(isDid||isSpore){
+                        CkbUtil.SporeCellData sporeCellData = CkbUtil.parseSporeCellData(Numeric.toHexString(getOutputData(output)));
+                        if (StringUtils.hasLength(sporeCellData.getClusterId())) {
+                            DobExtend dobExtend = dobExtendMapper.selectByArgs( Numeric.hexStringToByteArray(sporeCellData.getClusterId()));
+                            if (dobExtend == null) {
+                                //dobExtend未同步到 则计入错误数据 之后重试
+                                errorTaskScriptId.add(script.getId());
+                                return;
+                            }
+                            dobCode.setDobExtendId(dobExtend.getId());
+
+                        } else {
+                            //默认初始化的非集群的DobExtend
+                            dobCode.setDobExtendId(0L);
+                        }
+                    }else if (isMnftToken){
+                        if(script.getArgs().length<24){
+                            return;
+                        }
+                        DobExtend dobExtend = dobExtendMapper.selectByArgs(Arrays.copyOf(script.getArgs(),24) );
                         if (dobExtend == null) {
                             //dobExtend未同步到 则计入错误数据 之后重试
                             errorTaskScriptId.add(script.getId());
                             return;
                         }
                         dobCode.setDobExtendId(dobExtend.getId());
-
-                    } else {
-                        //默认初始化的非集群的DobExtend
-                        dobCode.setDobExtendId(0L);
                     }
+
                     dobCodeMapper.insert(dobCode);
                 }
         } catch (Exception e) {
@@ -316,10 +363,7 @@ public class ScriptAnalysisTask {
             if (typeScript != null && typeScript.getCellType() != null) {
                 if (CellType.valueOf(typeScript.getCellType()).isUdtType()) {
                     if(isUdt(script, typeScript.getCellType())){
-                        TypeScriptExtend typeScriptExtend = new TypeScriptExtend();
-                        typeScriptExtend.setScriptId(script.getId());
-                        typeScriptExtend.setCellType(typeScript.getCellType());
-                        typeScriptExtendMapper.insert(typeScriptExtend);
+                       buildUdt(script,typeScript.getCellType());
                     }
                 }
             }
@@ -344,7 +388,6 @@ public class ScriptAnalysisTask {
         return false;
 
     }
-
 
     private byte[]  getOutputData(Output output){
         byte[] data = output.getData();
@@ -377,5 +420,191 @@ public class ScriptAnalysisTask {
         return !VISIBLE_CHAR_PATTERN.matcher(name).matches();
     }
 
+
+
+    @Scheduled(cron = "${cron.mNftTask:0 */1 * * * ?}")
+    public void mNftTask() {
+        RLock lock = redissonClient.getLock("mNftTask");
+        Boolean isLock = false;
+        try {
+            isLock = lock.tryLock(5, 30, TimeUnit.SECONDS);
+            log.info("mNftTask start isLock is {}", isLock);
+            if (!isLock) {
+                return;
+            }
+            RAtomicLong mNftTaskId = redissonClient.getAtomicLong(M_NFT_CLASS_TASK_SCRIPT_ID);
+            long startId = mNftTaskId.get();
+
+            List<byte[]> codeHashes = new ArrayList<>();
+            scriptConfig.getTypeScripts().forEach(typeScript -> {
+                if(Objects.equals(typeScript.getCellType(),CellType.M_NFT_CLASS.getValue())) {
+                    codeHashes.add(Numeric.hexStringToByteArray(typeScript.getCodeHash()));
+                }
+            });
+
+            List<Script> scripts = scriptMapper.getBatchCodeHashesAndId(startId,codeHashes, SPORE_BATCH_SIZE);
+            if (scripts.isEmpty()) {
+                return;
+            }
+
+            Long maxScriptId = scripts.stream().mapToLong(Script::getId).max().orElse(startId);
+            for (Script script : scripts) {
+                dealNft(script);
+            }
+            mNftTaskId.set(maxScriptId);
+        } catch (Exception e) {
+            log.error("Error in sporeTask", e);
+        } finally {
+            if (isLock && lock.isHeldByCurrentThread()) {
+                lock.unlock();
+            }
+        }
+    }
+
+
+    @Scheduled(cron = "${cron.mNftTokenTask:0 */1 * * * ?}")
+    public void mNftTokenTask() {
+        RLock lock = redissonClient.getLock("mNftTokenTask");
+        Boolean isLock = false;
+        try {
+            isLock = lock.tryLock(5, 30, TimeUnit.SECONDS);
+            log.info("mNftTokenTask start isLock is {}", isLock);
+            if (!isLock) {
+                return;
+            }
+            RAtomicLong mNftTokenTaskId = redissonClient.getAtomicLong(M_NFT_TOKEN_TASK_SCRIPT_ID);
+            long startId = mNftTokenTaskId.get();
+
+            List<byte[]> codeHashes = new ArrayList<>();
+            scriptConfig.getTypeScripts().forEach(typeScript -> {
+                if(Objects.equals(typeScript.getCellType(),CellType.M_NFT_TOKEN.getValue())){
+                    codeHashes.add(Numeric.hexStringToByteArray(typeScript.getCodeHash()));
+                }
+            });
+
+            List<Script> scripts = scriptMapper.getBatchCodeHashesAndId(startId,codeHashes, SPORE_BATCH_SIZE);
+            if (scripts.isEmpty()) {
+                return;
+            }
+
+            Long maxScriptId = scripts.stream().mapToLong(Script::getId).max().orElse(startId);
+            for (Script script : scripts) {
+                dealNft(script);
+            }
+            mNftTokenTaskId.set(maxScriptId);
+        } catch (Exception e) {
+            log.error("Error in sporeTask", e);
+        } finally {
+            if (isLock && lock.isHeldByCurrentThread()) {
+                lock.unlock();
+            }
+        }
+    }
+
+
+
+
+    private void buildUdt(Script script,Integer cellTye){
+        TypeScriptExtend typeScriptExtend = new TypeScriptExtend();
+        typeScriptExtend.setScriptId(script.getId());
+        typeScriptExtend.setCellType(cellTye);
+        if(Objects.equals(cellTye,CellType.XUDT_COMPATIBLE.getValue())&&script.getHashType()==HashType.TYPE.getCode()){
+
+         }else if(Objects.equals(cellTye,CellType.XUDT.getValue())&&(script.getHashType()==HashType.TYPE.getCode()||script.getHashType()==HashType.DATA1.getCode())){
+         }else if(Objects.equals(cellTye,CellType.UDT.getValue())&&(script.getHashType()==HashType.TYPE.getCode()||script.getHashType()==HashType.DATA.getCode())){
+            Output output = outputMapper.selectOneByTypeScriptId(script.getId());
+            byte[] outputData = getOutputData(output);
+            if(outputData!=null&outputData.length>=16){
+             }
+        }
+
+
+        typeScriptExtendMapper.insert(typeScriptExtend);
+    }
+
+
+
+
+    @Scheduled(cron = "${cron.omigaTask:0 */1 * * * ?}")
+    public void omigaTask() {
+        RLock lock = redissonClient.getLock("omigaTask");
+        Boolean isLock = false;
+        try {
+            isLock = lock.tryLock(5, 30, TimeUnit.SECONDS);
+            log.info("omigaTask start isLock is {}", isLock);
+            if (!isLock) {
+                return;
+            }
+            RAtomicLong omigaTaskId = redissonClient.getAtomicLong(OMIGA_TASK_SCRIPT_ID);
+            long startId = omigaTaskId.get();
+
+            List<byte[]> codeHashes = new ArrayList<>();
+            scriptConfig.getTypeScripts().forEach(typeScript -> {
+                if(Objects.equals(typeScript.getCellType(),CellType.OMIGA_INSCRIPTION_INFO.getValue())){
+                    codeHashes.add(Numeric.hexStringToByteArray(typeScript.getCodeHash()));
+                }
+            });
+
+            List<Script> scripts = scriptMapper.getBatchCodeHashesAndId(startId,codeHashes, SPORE_BATCH_SIZE);
+            if (scripts.isEmpty()) {
+                return;
+            }
+
+            Long maxScriptId = scripts.stream().mapToLong(Script::getId).max().orElse(startId);
+            for (Script script : scripts) {
+                buildOmiga(script);
+            }
+            omigaTaskId.set(maxScriptId);
+        } catch (Exception e) {
+            log.error("Error in omigaTask", e);
+        } finally {
+            if (isLock && lock.isHeldByCurrentThread()) {
+                lock.unlock();
+            }
+        }
+    }
+
+    private void buildOmiga(Script script){
+        try {
+            List<Output> outputs = outputMapper.selectByTypeScriptId(script.getId());
+            outputs.sort(Comparator.comparing(Output::getId));
+            outputs.forEach(output -> {
+                //1. 数量不会很大 2. 同一主键下 insert会自动更新
+                byte[] outputData = getOutputData(output);
+                CkbUtil.OmigaInscriptionBasicInfo omigaInscriptionBasicInfo = CkbUtil.parseOmigaInscriptionInfo(Numeric.toHexString(outputData));
+                byte[] udtHash = Numeric.hexStringToByteArray(omigaInscriptionBasicInfo.getUdtHash());
+                OmigaInscriptionInfo omigaInscriptionInfo = new OmigaInscriptionInfo();
+                omigaInscriptionInfo.setOmigaScriptId(script.getId());
+                omigaInscriptionInfo.setOmigaScriptHash(script.getScriptHash());
+                omigaInscriptionInfo.setName(omigaInscriptionBasicInfo.getName());
+                omigaInscriptionInfo.setSymbol(omigaInscriptionBasicInfo.getSymbol());
+                omigaInscriptionInfo.setDecimal(omigaInscriptionBasicInfo.getDecimal());
+                omigaInscriptionInfo.setMintLimit(omigaInscriptionBasicInfo.getMintLimit());
+                omigaInscriptionInfo.setExpectedSupply(omigaInscriptionBasicInfo.getExpectedSupply());
+                omigaInscriptionInfo.setUdtHash(udtHash);
+                omigaInscriptionInfo.setMintStatus(omigaInscriptionBasicInfo.getMintStatus());
+                omigaInscriptionInfo.setTimestamp(output.getBlockTimestamp());
+                omigaInscriptionInfoMapper.insert(omigaInscriptionInfo);
+                Script udtScript = scriptMapper.findByScriptHashScript(udtHash);
+                if(udtScript!=null){
+                    TypeScriptExtend typeScriptExtend = new TypeScriptExtend();
+                    typeScriptExtend.setScriptId(udtScript.getId());
+                    typeScriptExtend.setUdtHash(udtHash);
+                    typeScriptExtend.setSymbol(omigaInscriptionInfo.getSymbol());
+                    typeScriptExtend.setDecimal(omigaInscriptionInfo.getDecimal());
+                    typeScriptExtend.setName(omigaInscriptionInfo.getName());
+                    Script lockScript = scriptMapper.selectById(output.getLockScriptId());
+                    if(lockScript!=null){
+                        typeScriptExtend.setIssuerAddress(TypeConversionUtil.scriptToAddress(lockScript.getCodeHash(), lockScript.getArgs(), lockScript.getHashType()));
+                    }
+                    typeScriptExtendMapper.insert(typeScriptExtend);
+                }
+                dobExtendMapper.flush();
+            });
+        }catch (Exception e){
+            log.error("buildOmiga error",e);
+        }
+
+    }
 
 }
